@@ -187,6 +187,19 @@ CARDS = {
         count=1,
         splash_radius=1.5,
     ),
+    "skeletons": CardStats(
+        name="Skeletons",
+        card_type=CardType.TROOP,
+        elixir_cost=1,
+        hp=81,
+        damage=81,
+        hit_speed=1.1,
+        speed="fast",
+        range=0.8,  # melee short
+        targets=TargetType.GROUND,
+        transport=UnitTransport.GROUND,
+        count=3,
+    ),
     "fireball": CardStats(
         name="Fireball",
         card_type=CardType.SPELL,

@@ -226,10 +226,15 @@ class Arena:
             y = max(y, RIVER_Y + RIVER_HEIGHT)  # min y=18 (defender side)
         x = max(1, min(x, ARENA_WIDTH))
 
-        for i in range(card.count):
-            # Slight offset if multiple units (future swarm cards)
-            offset_x = (i % 5 - 2) * 0.5 if card.count > 1 else 0.0
-            offset_y = (i // 5 - 1) * 0.5 if card.count > 1 else 0.0
+        # Fixed spawn offsets per count (triangle for 3, etc.)
+        if card.count == 3:
+            offsets = [(0, 0), (-0.5, 0.5), (0.5, 0.5)]
+        elif card.count == 1:
+            offsets = [(0, 0)]
+        else:
+            offsets = [(0, 0)] * card.count
+
+        for offset_x, offset_y in offsets:
             unit = Unit(
                 card_name=card.name,
                 side=side,

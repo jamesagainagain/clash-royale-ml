@@ -59,6 +59,7 @@ CARD_SHAPES = {
     "Musketeer":   "triangle",
     "Mini PEKKA":  "square",
     "Wizard":      "triangle",
+    "Skeletons":   "circle",
 }
 CARD_SIZES = {
     "Knight":      8,
@@ -67,6 +68,7 @@ CARD_SIZES = {
     "Musketeer":   7,
     "Mini PEKKA":  10,
     "Wizard":      7,
+    "Skeletons":   4,
 }
 
 
