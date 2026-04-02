@@ -98,6 +98,7 @@ class CardStats:
     transport: UnitTransport = UnitTransport.GROUND
     count: int = 1  # how many units spawn
     splash_radius: float = 0.0  # 0 = single target
+    sight_range: float = 5.5  # tiles — how far unit detects enemies
     # Spell stats
     spell_damage: int = 0
     spell_radius: float = 0.0
@@ -133,6 +134,7 @@ CARDS = {
         targets=TargetType.BUILDINGS,
         transport=UnitTransport.GROUND,
         count=1,
+        sight_range=7.5,
     ),
     "hog_rider": CardStats(
         name="Hog Rider",
@@ -146,6 +148,7 @@ CARDS = {
         targets=TargetType.BUILDINGS,
         transport=UnitTransport.GROUND,
         count=1,
+        sight_range=9.5,
     ),
     "musketeer": CardStats(
         name="Musketeer",
@@ -159,6 +162,7 @@ CARDS = {
         targets=TargetType.AIR_AND_GROUND,
         transport=UnitTransport.GROUND,
         count=1,
+        sight_range=6.0,
     ),
     "mini_pekka": CardStats(
         name="Mini PEKKA",

@@ -52,6 +52,7 @@ class Unit:
     targets: TargetType
     transport: UnitTransport
     splash_radius: float = 0.0
+    sight_range: float = 5.5  # tiles — detection range for enemies
     attack_cooldown: float = 0.0  # seconds until next attack
     deploy_timer: float = DEPLOY_TIME  # seconds until active
 
@@ -108,8 +109,9 @@ def _dist(x1: float, y1: float, x2: float, y2: float) -> float:
 def _find_nearest_target(
     unit: Unit,
     enemies: list[Unit | Tower],
+    sight_range: float,
 ) -> Optional[Unit | Tower]:
-    """Find the nearest valid target for a unit following CR targeting rules."""
+    """Find the nearest valid target within sight range, following CR targeting rules."""
     best = None
     best_dist = float("inf")
 
@@ -123,22 +125,20 @@ def _find_nearest_target(
         elif isinstance(enemy, Tower):
             if not enemy.alive:
                 continue
-            # Non-active king tower can't be targeted unless princess towers are down
-            # (handled in the caller by filtering)
         else:
             continue
 
         d = _dist(unit.x, unit.y, enemy.x, enemy.y)
-        if d < best_dist:
+        if d <= sight_range and d < best_dist:
             best_dist = d
             best = enemy
 
-    # For BUILDINGS-targeting units, find nearest tower
+    # For BUILDINGS-targeting units, find nearest tower in sight
     if unit.targets == TargetType.BUILDINGS and best is None:
         for enemy in enemies:
             if isinstance(enemy, Tower) and enemy.alive:
                 d = _dist(unit.x, unit.y, enemy.x, enemy.y)
-                if d < best_dist:
+                if d <= sight_range and d < best_dist:
                     best_dist = d
                     best = enemy
 
@@ -249,6 +249,7 @@ class Arena:
                 targets=card.targets,
                 transport=card.transport,
                 splash_radius=card.splash_radius,
+                sight_range=card.sight_range,
             )
             self.state.units.append(unit)
         return True
@@ -284,6 +285,25 @@ class Arena:
         # King activates if a princess tower is destroyed
         if not damaged_tower.alive:
             king.active = True
+
+    def _nearest_enemy_tower(self, unit: Unit) -> Optional[Tower]:
+        """Return the nearest alive enemy tower (fallback when nothing in sight)."""
+        best = None
+        best_dist = float("inf")
+        for t in self.state.towers:
+            if t.side != unit.side and t.alive:
+                if t.tower_type == "king":
+                    princess_alive = any(
+                        tw.side == t.side and tw.tower_type == "princess" and tw.alive
+                        for tw in self.state.towers
+                    )
+                    if princess_alive:
+                        continue
+                d = _dist(unit.x, unit.y, t.x, t.y)
+                if d < best_dist:
+                    best_dist = d
+                    best = t
+        return best
 
     def _get_targetable_enemies(self, unit: Unit) -> list[Unit | Tower]:
         """Return all valid enemy targets for a unit."""
@@ -332,7 +352,11 @@ class Arena:
                 continue
 
             enemies = self._get_targetable_enemies(unit)
-            target = _find_nearest_target(unit, enemies)
+            target = _find_nearest_target(unit, enemies, unit.sight_range)
+
+            # If nothing in sight, walk toward nearest enemy tower
+            if target is None:
+                target = self._nearest_enemy_tower(unit)
             if target is None:
                 continue
 
