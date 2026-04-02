@@ -10,26 +10,38 @@ from typing import Optional
 
 
 # =============================================================================
-# Arena dimensions (in tiles)
+# Arena dimensions (in tiles, 1-indexed: tile 1 to tile N)
 # =============================================================================
-ARENA_WIDTH = 18
-ARENA_HEIGHT = 32
-RIVER_Y = 15  # River runs across rows 15-16 (centre of 32-tile arena)
-BRIDGE_X_LEFT = 3    # centre of left bridge
-BRIDGE_X_RIGHT = 14  # centre of right bridge
+ARENA_WIDTH = 18     # x: 1..18
+ARENA_HEIGHT = 32    # y: 1..32  (15 per half + 2 river)
+RIVER_Y = 16         # River occupies tiles y=16 and y=17
+RIVER_HEIGHT = 2
+BRIDGE_X_LEFT = 4    # centre of left bridge (aligned with left princess tower)
+BRIDGE_X_RIGHT = 15  # centre of right bridge (aligned with right princess tower)
 BRIDGE_WIDTH = 3     # each bridge is 3 tiles wide
 
-# Tower positions (x, y) — y=0 is attacker's top edge, y=31 is defender's bottom edge
-# Matched to reference grid screenshot
-# Attacker towers (top half)
-ATTACKER_KING_TOWER = (8.5, 2)
-ATTACKER_LEFT_TOWER = (3, 6)
-ATTACKER_RIGHT_TOWER = (14, 6)
+# Tower positions (centre x, centre y) — 1-indexed
+# Layout is vertically mirrored: mirror_y = ARENA_HEIGHT + 1 - y
+#
+# Defender towers (bottom half, y=18..32)
+#   King (4×4): tiles x=8..11, y=28..31 → centre (9.5, 29.5), 1 empty row at y=32
+#   Princess (3×3): centres at (4, 26) and (15, 26)
+DEFENDER_KING_TOWER = (9.5, 29.5)
+DEFENDER_LEFT_TOWER = (4, 26)
+DEFENDER_RIGHT_TOWER = (15, 26)
 
-# Defender towers (bottom half)
-DEFENDER_LEFT_TOWER = (3, 25)
-DEFENDER_RIGHT_TOWER = (14, 25)
-DEFENDER_KING_TOWER = (8.5, 29)
+# Attacker towers (top half, y=1..15) — mirrored
+#   King (4×4): tiles x=8..11, y=2..5 → centre (9.5, 3.5), 1 empty row at y=1
+#   Princess (3×3): centres at (4, 7) and (15, 7)
+ATTACKER_KING_TOWER = (9.5, 3.5)
+ATTACKER_LEFT_TOWER = (4, 7)
+ATTACKER_RIGHT_TOWER = (15, 7)
+
+# Tower dimensions (in tiles)
+PRINCESS_TOWER_W = 3  # 3×3
+PRINCESS_TOWER_H = 3
+KING_TOWER_W = 4      # 4×4
+KING_TOWER_H = 4
 
 # =============================================================================
 # Game timing

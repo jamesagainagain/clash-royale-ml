@@ -12,9 +12,9 @@ def test_engine_basic():
     arena.state.defender_elixir = 10
 
     # Attacker knight at top heading down
-    arena.spawn_card(CARDS["knight"], Side.ATTACKER, 9, 5)
+    arena.spawn_card(CARDS["knight"], Side.ATTACKER, 9, 10)
     # Defender knight at bottom heading up
-    arena.spawn_card(CARDS["knight"], Side.DEFENDER, 9, 25)
+    arena.spawn_card(CARDS["knight"], Side.DEFENDER, 9, 24)
 
     for tick in range(400):
         arena.tick()
@@ -48,7 +48,7 @@ def test_hog_vs_mini_pekka():
     arena.state.attacker_elixir = 10
     arena.state.defender_elixir = 10
 
-    arena.spawn_card(CARDS["hog_rider"], Side.ATTACKER, 9, 10)
+    arena.spawn_card(CARDS["hog_rider"], Side.ATTACKER, 9, 12)
     arena.spawn_card(CARDS["mini_pekka"], Side.DEFENDER, 9, 22)
 
     for tick in range(300):

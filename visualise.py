@@ -17,8 +17,10 @@ import sys
 import math
 import pygame
 from cr_sim.constants import (
-    ARENA_WIDTH, ARENA_HEIGHT, RIVER_Y, BRIDGE_X_LEFT, BRIDGE_X_RIGHT, BRIDGE_WIDTH, CARDS,
+    ARENA_WIDTH, ARENA_HEIGHT, RIVER_Y, RIVER_HEIGHT,
+    BRIDGE_X_LEFT, BRIDGE_X_RIGHT, BRIDGE_WIDTH, CARDS,
     PRINCESS_TOWER, KING_TOWER,
+    PRINCESS_TOWER_W, PRINCESS_TOWER_H, KING_TOWER_W, KING_TOWER_H,
 )
 from cr_sim.engine import Arena, Side
 
@@ -69,7 +71,8 @@ CARD_SIZES = {
 
 
 def tile_to_px(tx: float, ty: float) -> tuple[int, int]:
-    return int(tx * TILE_SIZE), int(ty * TILE_SIZE)
+    """Convert 1-indexed tile coord to pixel centre of that tile."""
+    return int((tx - 0.5) * TILE_SIZE), int((ty - 0.5) * TILE_SIZE)
 
 
 def draw_hp_bar(surface, cx: int, cy: int, ratio: float, width: int = 20):
@@ -118,28 +121,39 @@ def draw_unit(surface, name: str, px: int, py: int, is_attacker: bool, hp_ratio:
 
 
 def draw_tower(surface, tower, font_sm):
-    """Draw a tower as a filled square."""
+    """Draw a tower snapped to tile grid (princess=3×3, king=4×4). 1-indexed."""
     is_king = tower.tower_type == "king"
     is_atk = tower.side == Side.ATTACKER
-    size = int(TILE_SIZE * 1.4) if is_king else TILE_SIZE
     colour = (KING_ATK if is_atk else KING_DEF) if is_king else (TOWER_ATK if is_atk else TOWER_DEF)
 
-    px, py = tile_to_px(tower.x, tower.y)
-    rect = pygame.Rect(px - size // 2, py - size // 2, size, size)
+    if is_king:
+        tw, th = KING_TOWER_W, KING_TOWER_H
+    else:
+        tw, th = PRINCESS_TOWER_W, PRINCESS_TOWER_H
+
+    # Compute first tile the tower occupies (1-indexed)
+    first_tile_x = int(tower.x + 0.5 - tw / 2)  # king(9.5,4)→8, princess(4,3)→3
+    first_tile_y = int(tower.y + 0.5 - th / 2)
+    # Convert to pixel rect (tile N starts at pixel (N-1)*TILE_SIZE)
+    w_px = tw * TILE_SIZE
+    h_px = th * TILE_SIZE
+    rect = pygame.Rect((first_tile_x - 1) * TILE_SIZE, (first_tile_y - 1) * TILE_SIZE, w_px, h_px)
+
+    # Centre point for text/HP bar
+    cx = rect.centerx
+    cy = rect.centery
 
     if tower.alive:
         pygame.draw.rect(surface, colour, rect)
         pygame.draw.rect(surface, WHITE, rect, 2)
-        # HP text
         hp_text = font_sm.render(str(tower.hp), True, WHITE)
-        surface.blit(hp_text, (px - hp_text.get_width() // 2, py - hp_text.get_height() // 2))
-        # HP bar
-        draw_hp_bar(surface, px, py, tower.hp / tower.max_hp, width=size)
+        surface.blit(hp_text, (cx - hp_text.get_width() // 2, cy - hp_text.get_height() // 2))
+        draw_hp_bar(surface, cx, cy, tower.hp / tower.max_hp, width=w_px)
     else:
         pygame.draw.rect(surface, DARK_GREY, rect)
         pygame.draw.rect(surface, GREY, rect, 1)
         x_text = font_sm.render("X", True, HP_RED_BAR)
-        surface.blit(x_text, (px - x_text.get_width() // 2, py - x_text.get_height() // 2))
+        surface.blit(x_text, (cx - x_text.get_width() // 2, cy - x_text.get_height() // 2))
 
 
 def draw_sidebar(surface, arena, atk_card, def_card, speed, paused, font, font_sm):
@@ -214,8 +228,8 @@ def run(atk_card: str, def_card: str):
         a = Arena()
         a.state.attacker_elixir = 10
         a.state.defender_elixir = 10
-        a.spawn_card(CARDS[atk_card], Side.ATTACKER, 9, 8)
-        a.spawn_card(CARDS[def_card], Side.DEFENDER, 9, 22)
+        a.spawn_card(CARDS[atk_card], Side.ATTACKER, 9, 10)
+        a.spawn_card(CARDS[def_card], Side.DEFENDER, 9, 24)
         return a
 
     arena = init_arena()
@@ -263,17 +277,17 @@ def run(atk_card: str, def_card: str):
             y = ty * TILE_SIZE
             pygame.draw.line(screen, (40, 60, 40), (0, y), (ARENA_WIDTH * TILE_SIZE, y), 1)
 
-        # River
-        ry1 = RIVER_Y * TILE_SIZE
-        ry2 = (RIVER_Y + 1) * TILE_SIZE
-        river_rect = pygame.Rect(0, ry1, ARENA_WIDTH * TILE_SIZE, ry2 - ry1)
+        # River (2 tiles tall, 1-indexed: tiles RIVER_Y to RIVER_Y+RIVER_HEIGHT-1)
+        ry_px = (RIVER_Y - 1) * TILE_SIZE
+        river_h = RIVER_HEIGHT * TILE_SIZE
+        river_rect = pygame.Rect(0, ry_px, ARENA_WIDTH * TILE_SIZE, river_h)
         pygame.draw.rect(screen, RIVER_BLUE, river_rect)
 
-        # Bridges (3 tiles wide, centred on bridge x)
-        half_w = BRIDGE_WIDTH / 2
+        # Bridges (3 tiles wide, centred on bridge x, 1-indexed)
         for bx in [BRIDGE_X_LEFT, BRIDGE_X_RIGHT]:
-            bpx = int((bx - half_w) * TILE_SIZE)
-            bridge_rect = pygame.Rect(bpx, ry1, TILE_SIZE * BRIDGE_WIDTH, ry2 - ry1)
+            first_bridge_tile = int(bx + 0.5 - BRIDGE_WIDTH / 2)  # bx=4,w=3 → tile 3
+            bpx = (first_bridge_tile - 1) * TILE_SIZE
+            bridge_rect = pygame.Rect(bpx, ry_px, BRIDGE_WIDTH * TILE_SIZE, river_h)
             pygame.draw.rect(screen, BRIDGE_GREY, bridge_rect)
             pygame.draw.rect(screen, WHITE, bridge_rect, 1)
 

@@ -28,8 +28,8 @@ import numpy as np
 from gymnasium import spaces
 
 from .constants import (
-    ARENA_WIDTH, ARENA_HEIGHT, RIVER_Y, CARDS, ELIXIR_CAP, MATCH_DURATION,
-    CardStats, CardType, TargetType, PRINCESS_TOWER, KING_TOWER,
+    ARENA_WIDTH, ARENA_HEIGHT, RIVER_Y, RIVER_HEIGHT, CARDS, ELIXIR_CAP,
+    MATCH_DURATION, CardStats, CardType, TargetType, PRINCESS_TOWER, KING_TOWER,
 )
 from .engine import Arena, Side, Unit
 
@@ -96,11 +96,11 @@ class ClashDefenseEnv(gym.Env):
         return card_idx, gx, gy
 
     def _grid_to_arena(self, gx: int, gy: int) -> tuple[float, float]:
-        """Convert grid coords to arena coords (defender's half)."""
-        x = (gx / (PLACE_GRID_X - 1)) * (ARENA_WIDTH - 1)
-        # Defender places on their half: y from RIVER_Y+2 to ARENA_HEIGHT-3
-        y_min = RIVER_Y + 2  # row 17
-        y_max = ARENA_HEIGHT - 3  # row 29
+        """Convert grid coords to arena coords (defender's half, 1-indexed)."""
+        x = 1 + (gx / (PLACE_GRID_X - 1)) * (ARENA_WIDTH - 1)
+        # Defender places on their half: y from RIVER_Y+RIVER_HEIGHT to ARENA_HEIGHT
+        y_min = RIVER_Y + RIVER_HEIGHT  # tile 18
+        y_max = ARENA_HEIGHT            # tile 32
         y = y_min + (gy / (PLACE_GRID_Y - 1)) * (y_max - y_min)
         return x, y
 
@@ -128,8 +128,8 @@ class ClashDefenseEnv(gym.Env):
         ]
         for i, unit in enumerate(enemy_units[:MAX_TRACKED_UNITS]):
             base = 5 + i * UNIT_FEATURES
-            obs[base + 0] = unit.x / (ARENA_WIDTH - 1)
-            obs[base + 1] = unit.y / (ARENA_HEIGHT - 1)
+            obs[base + 0] = (unit.x - 1) / (ARENA_WIDTH - 1)
+            obs[base + 1] = (unit.y - 1) / (ARENA_HEIGHT - 1)
             obs[base + 2] = unit.hp / unit.max_hp
             obs[base + 3] = unit.speed / 2.0  # normalize (max is 2.0 t/s)
             obs[base + 4] = 1.0 if unit.targets == TargetType.BUILDINGS else 0.0
@@ -152,8 +152,8 @@ class ClashDefenseEnv(gym.Env):
         card = CARDS[card_key]
 
         # Attacker places near top of arena, random x, heading toward defender
-        ax = rng.uniform(2, ARENA_WIDTH - 3)
-        ay = rng.uniform(2, 14)  # attacker's half
+        ax = rng.uniform(3, ARENA_WIDTH - 2)
+        ay = rng.uniform(2, RIVER_Y - 1)  # attacker's half (tiles 2..15)
 
         # Give both sides enough elixir
         self.arena.state.attacker_elixir = 10.0

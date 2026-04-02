@@ -18,7 +18,7 @@ from typing import Optional
 from enum import Enum, auto
 
 from .constants import (
-    ARENA_WIDTH, ARENA_HEIGHT, RIVER_Y,
+    ARENA_WIDTH, ARENA_HEIGHT, RIVER_Y, RIVER_HEIGHT,
     BRIDGE_X_LEFT, BRIDGE_X_RIGHT, BRIDGE_WIDTH,
     TICK_DURATION, SPEED_MAP,
     DEFENDER_LEFT_TOWER, DEFENDER_RIGHT_TOWER, DEFENDER_KING_TOWER,
@@ -219,12 +219,12 @@ class Arena:
             self._apply_spell(card, side, x, y)
             return True
 
-        # Clamp to valid deployment zone (own half)
+        # Clamp to valid deployment zone (own half, 1-indexed)
         if side == Side.ATTACKER:
-            y = min(y, RIVER_Y - 1)
+            y = min(y, RIVER_Y - 1)  # max y=15 (attacker side)
         else:
-            y = max(y, RIVER_Y + 1)
-        x = max(0, min(x, ARENA_WIDTH - 1))
+            y = max(y, RIVER_Y + RIVER_HEIGHT)  # min y=18 (defender side)
+        x = max(1, min(x, ARENA_WIDTH))
 
         for i in range(card.count):
             # Slight offset if multiple units (future swarm cards)
@@ -346,8 +346,8 @@ class Arena:
                     new_x, new_y = self._apply_bridge_constraint(
                         unit, new_x, new_y
                     )
-                    unit.x = max(0, min(new_x, ARENA_WIDTH - 1))
-                    unit.y = max(0, min(new_y, ARENA_HEIGHT - 1))
+                    unit.x = max(1, min(new_x, ARENA_WIDTH))
+                    unit.y = max(1, min(new_y, ARENA_HEIGHT))
             else:
                 # In range — attack if cooldown is ready
                 unit.attack_cooldown -= dt
@@ -464,6 +464,6 @@ class Arena:
                 if t.tower_type == "king":
                     label = "king"
                 else:
-                    label = f"princess_{'left' if t.x < ARENA_WIDTH // 2 else 'right'}"
+                    label = f"princess_{'left' if t.x < ARENA_WIDTH / 2 + 0.5 else 'right'}"
                 result[label] = t.hp
         return result
