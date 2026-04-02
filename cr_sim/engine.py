@@ -100,6 +100,7 @@ class GameState:
     defender_elixir: float = 5.0
     game_over: bool = False
     winner: Optional[Side] = None
+    tower_damage_dealt: int = 0  # damage dealt by towers this tick (reset each tick)
 
 
 def _dist(x1: float, y1: float, x2: float, y2: float) -> float:
@@ -332,6 +333,7 @@ class Arena:
         dt = TICK_DURATION
         self.state.tick += 1
         self.state.time += dt
+        self.state.tower_damage_dealt = 0
 
         # Regenerate elixir
         self.state.attacker_elixir = min(
@@ -397,6 +399,7 @@ class Arena:
                 tower.attack_cooldown -= dt
                 if tower.attack_cooldown <= 0:
                     target.hp -= tower.damage
+                    self.state.tower_damage_dealt += tower.damage
                     tower.attack_cooldown = tower.hit_speed
 
         # Remove dead units
@@ -408,32 +411,46 @@ class Arena:
     def _apply_bridge_constraint(
         self, unit: Unit, new_x: float, new_y: float
     ) -> tuple[float, float]:
-        """Force ground units to cross the river only via bridges."""
+        """Force ground units to cross the river only via bridges.
+
+        Ground units cannot enter the river zone (RIVER_Y to RIVER_Y+RIVER_HEIGHT)
+        unless they are at a bridge x-position. This prevents units from drifting
+        through the river at non-bridge positions.
+        """
         if unit.transport == UnitTransport.AIR:
             return new_x, new_y
 
-        old_side_of_river = unit.y < RIVER_Y
-        new_side_of_river = new_y < RIVER_Y
+        river_top = RIVER_Y                    # y=16
+        river_bottom = RIVER_Y + RIVER_HEIGHT  # y=18
 
-        # Not crossing the river
-        if old_side_of_river == new_side_of_river:
+        # Check if unit is currently outside the river and trying to enter/cross it
+        in_river_old = river_top <= unit.y <= river_bottom
+        in_river_new = river_top <= new_y <= river_bottom
+        crossed_river = (unit.y < river_top and new_y > river_bottom) or \
+                        (unit.y > river_bottom and new_y < river_top)
+
+        # No river interaction — allow move
+        if not in_river_new and not crossed_river and not in_river_old:
             return new_x, new_y
 
-        # Crossing — must go through a bridge
-        left_bridge_dist = abs(unit.x - BRIDGE_X_LEFT)
-        right_bridge_dist = abs(unit.x - BRIDGE_X_RIGHT)
-
-        if left_bridge_dist <= right_bridge_dist:
-            bridge_x = BRIDGE_X_LEFT
-        else:
-            bridge_x = BRIDGE_X_RIGHT
-
-        # If not within the bridge width, redirect toward the nearest one
+        # Find nearest bridge
+        left_bridge_dist = abs(new_x - BRIDGE_X_LEFT)
+        right_bridge_dist = abs(new_x - BRIDGE_X_RIGHT)
+        bridge_x = BRIDGE_X_LEFT if left_bridge_dist <= right_bridge_dist else BRIDGE_X_RIGHT
         half_w = BRIDGE_WIDTH / 2
-        if abs(unit.x - bridge_x) > half_w:
-            return bridge_x, unit.y  # move toward bridge, don't cross yet
+
+        # If on a bridge, allow movement through the river zone
+        if abs(new_x - bridge_x) <= half_w:
+            return new_x, new_y
+
+        # Not on a bridge — redirect toward the nearest bridge, don't enter river
+        nearest_bridge_from_old = BRIDGE_X_LEFT if abs(unit.x - BRIDGE_X_LEFT) <= abs(unit.x - BRIDGE_X_RIGHT) else BRIDGE_X_RIGHT
+        if in_river_old:
+            # Already in river (shouldn't happen, but recover by pushing to bridge)
+            return nearest_bridge_from_old, unit.y
         else:
-            return new_x, new_y  # within bridge width, allow crossing
+            # Approaching river — walk toward bridge, stay on current side
+            return nearest_bridge_from_old, unit.y
 
     def _attack(self, attacker: Unit, target: Unit | Tower) -> None:
         """Apply damage from attacker to target (with splash if applicable)."""

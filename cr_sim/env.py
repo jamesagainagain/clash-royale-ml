@@ -23,6 +23,8 @@ Action space (Discrete):
 
 from __future__ import annotations
 
+import math
+
 import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
@@ -77,8 +79,9 @@ class ClashDefenseEnv(gym.Env):
         self.n_actions = 1 + n_cards * PLACE_GRID_X * PLACE_GRID_Y
         self.action_space = spaces.Discrete(self.n_actions)
 
-        # Observation: towers(3) + elixir(1) + time(1) + units(MAX*FEATURES)
-        obs_size = 3 + 1 + 1 + MAX_TRACKED_UNITS * UNIT_FEATURES
+        # Observation: towers(3) + elixir(1) + time(1) + crossed_bridge(1)
+        #   + has_played(1) + units(MAX*FEATURES)
+        obs_size = 3 + 1 + 1 + 1 + 1 + MAX_TRACKED_UNITS * UNIT_FEATURES
         self.observation_space = spaces.Box(
             low=0.0, high=1.0, shape=(obs_size,), dtype=np.float32
         )
@@ -122,12 +125,18 @@ class ClashDefenseEnv(gym.Env):
         obs[3] = state.defender_elixir / ELIXIR_CAP
         obs[4] = max(0, (MATCH_DURATION - state.time) / MATCH_DURATION)
 
-        # Enemy units (attacker's units)
+        # Has attacker crossed the bridge? (any attacker unit past the river)
         enemy_units = [
             u for u in state.units if u.side == Side.ATTACKER and u.alive
         ]
+        obs[5] = 1.0 if any(u.y >= RIVER_Y + RIVER_HEIGHT for u in enemy_units) else 0.0
+
+        # Has defender already played?
+        obs[6] = 1.0 if self._defender_has_played else 0.0
+
+        # Enemy units
         for i, unit in enumerate(enemy_units[:MAX_TRACKED_UNITS]):
-            base = 5 + i * UNIT_FEATURES
+            base = 7 + i * UNIT_FEATURES
             obs[base + 0] = (unit.x - 1) / (ARENA_WIDTH - 1)
             obs[base + 1] = (unit.y - 1) / (ARENA_HEIGHT - 1)
             obs[base + 2] = unit.hp / unit.max_hp
@@ -166,6 +175,12 @@ class ClashDefenseEnv(gym.Env):
         self._ticks_since_play = 0
         self._episode_ticks = 0
         self._max_idle_ticks = 200  # end if nothing happening
+
+        # Track attacker HP for dense reward
+        self._prev_attacker_hp = sum(
+            u.hp for u in self.arena.state.units if u.side == Side.ATTACKER
+        )
+        self._attacker_max_hp = self._prev_attacker_hp
 
         return self._get_obs(), {"attacker_card": card_key}
 
@@ -213,36 +228,68 @@ class ClashDefenseEnv(gym.Env):
         elif self._episode_ticks > self._max_idle_ticks:
             truncated = True
 
-        # ── Reward (only at episode end for stability) ──────────────────
+        # ── Reward ─────────────────────────────────────────────────────
+        # Primary objective: minimise tower damage taken.
+        # All rewards are ONE-TIME signals — no per-tick accumulation.
+        # Placement bonuses (timing, sight range) are small shaping signals;
+        # the dominant reward is terminal HP preservation.
+        reward = 0.0
+
+        # 1. One-time placement shaping (fired once when card is played)
+        #    These guide the agent toward good habits, but are small relative
+        #    to the terminal HP reward so they can't override outcomes.
+        if "played_card" in info:
+            px, py = info["placement"]
+            atk_units = [
+                u for u in self.arena.state.units
+                if u.side == Side.ATTACKER and u.alive
+            ]
+            if atk_units:
+                nearest_atk = min(atk_units, key=lambda u: math.hypot(px - u.x, py - u.y))
+                dist_to_atk = math.hypot(px - nearest_atk.x, py - nearest_atk.y)
+
+                # Sight range: placed where attacker will aggro onto defender
+                if dist_to_atk <= nearest_atk.sight_range:
+                    reward += 0.1
+
+                # Timing: did attacker cross the bridge?
+                bridge_y = RIVER_Y + RIVER_HEIGHT
+                atk_crossed = any(u.y >= bridge_y for u in atk_units)
+                if atk_crossed:
+                    reward += 0.15  # good timing
+
+                    # Extra for optimal timing (2-4 tiles past bridge)
+                    furthest_y = max(u.y for u in atk_units)
+                    tiles_past_bridge = furthest_y - bridge_y
+                    if 2.0 <= tiles_past_bridge <= 4.0:
+                        reward += 0.1
+                else:
+                    reward -= 0.3  # early placement penalty
+
+        # 2. Terminal reward (episode end only) — dominated by HP preservation
         if done or truncated:
-            # Component 1: Tower HP preserved (0 to 1, higher = less damage taken)
             current_tower_hp = sum(
                 t.hp for t in self.arena.state.towers
                 if t.side == Side.DEFENDER and t.tower_type == "princess"
             )
-            hp_preserved = current_tower_hp / self._initial_tower_hp  # 1.0 = no damage
+            hp_ratio = current_tower_hp / self._initial_tower_hp if self._initial_tower_hp > 0 else 1.0
 
-            # Component 2: Elixir efficiency
-            # Positive trade = spent less elixir than attacker, negative = overspent
-            # Range roughly -1 to +1: e.g. spent 3 to defend 5 → +0.2, spent 5 to defend 3 → -0.2
-            elixir_trade = (self._attacker_elixir_cost - self._defender_elixir_spent) / ELIXIR_CAP
+            # HP preserved is the primary signal (up to +2.0)
+            reward += 2.0 * hp_ratio
 
-            # Component 3: Kill bonus (did all attackers die?)
-            kill_bonus = 0.3 if not attacker_units_alive else 0.0
+            # Small kill bonus — the kill will happen, but reward finishing
+            kill_bonus = 1.0 if not attacker_units_alive else 0.0
+            reward += 0.3 * kill_bonus
 
-            # Weighted sum — tower HP matters most, but efficiency is rewarded
-            reward = (
-                0.5 * hp_preserved      # protect towers
-                + 0.3 * elixir_trade    # spend efficiently
-                + 0.2 * kill_bonus      # clean up attackers
-            )
+            # Penalty for never placing a card
+            if not self._defender_has_played:
+                reward -= 0.5
+
             info["reward_breakdown"] = {
-                "hp_preserved": hp_preserved,
-                "elixir_trade": elixir_trade,
+                "hp_preserved": hp_ratio,
                 "kill_bonus": kill_bonus,
+                "never_placed_penalty": not self._defender_has_played,
             }
-        else:
-            reward = 0.0  # no intermediate reward — only score at the end
 
         obs = self._get_obs()
         return obs, reward, done, truncated, info

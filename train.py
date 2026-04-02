@@ -21,7 +21,7 @@ def make_env():
     )
 
 
-def train(timesteps: int = 100_000, n_envs: int = 4):
+def train(timesteps: int = 100_000, n_envs: int = 8):
     env = make_vec_env(make_env, n_envs=n_envs)
     eval_env = make_vec_env(make_env, n_envs=1)
 
