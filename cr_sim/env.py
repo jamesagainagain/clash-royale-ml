@@ -33,15 +33,19 @@ from .constants import (
     ARENA_WIDTH, ARENA_HEIGHT, RIVER_Y, RIVER_HEIGHT, CARDS, ELIXIR_CAP,
     MATCH_DURATION, CardStats, CardType, TargetType, PRINCESS_TOWER, KING_TOWER,
 )
-from .engine import Arena, Side, Unit
+try:
+    from .c_engine import CArena as Arena, CSide as Side
+    from .engine import Unit  # still needed for type hints
+except ImportError:
+    from .engine import Arena, Side, Unit
 
 
 MAX_TRACKED_UNITS = 20  # max enemy units we encode in obs
 UNIT_FEATURES = 5  # x, y, hp_ratio, speed_norm, is_building_targeter
 
-# Grid resolution for card placement (coarser than full arena for tractable action space)
-PLACE_GRID_X = 9   # 9 columns (every 2 tiles)
-PLACE_GRID_Y = 8   # 8 rows on defender's half
+# Grid resolution for card placement (tile-by-tile for precise positioning)
+PLACE_GRID_X = 18  # 1 column per tile
+PLACE_GRID_Y = 15  # 1 row per tile on defender's half (y=18..32)
 
 
 class ClashDefenseEnv(gym.Env):
@@ -236,22 +240,14 @@ class ClashDefenseEnv(gym.Env):
         reward = 0.0
 
         # 1. One-time placement shaping (fired once when card is played)
-        #    These guide the agent toward good habits, but are small relative
-        #    to the terminal HP reward so they can't override outcomes.
+        #    Only timing signals — no sight range bonus, which was biasing
+        #    the agent toward same-lane placement instead of optimal central pulls.
         if "played_card" in info:
-            px, py = info["placement"]
             atk_units = [
                 u for u in self.arena.state.units
                 if u.side == Side.ATTACKER and u.alive
             ]
             if atk_units:
-                nearest_atk = min(atk_units, key=lambda u: math.hypot(px - u.x, py - u.y))
-                dist_to_atk = math.hypot(px - nearest_atk.x, py - nearest_atk.y)
-
-                # Sight range: placed where attacker will aggro onto defender
-                if dist_to_atk <= nearest_atk.sight_range:
-                    reward += 0.1
-
                 # Timing: did attacker cross the bridge?
                 bridge_y = RIVER_Y + RIVER_HEIGHT
                 atk_crossed = any(u.y >= bridge_y for u in atk_units)
